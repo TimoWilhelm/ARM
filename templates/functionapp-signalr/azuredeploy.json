@@ -1,0 +1,280 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "resourceName": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().name]"
+    },
+    "functionsLanguage": {
+      "type": "string",
+      "allowedValues": [
+        "dotnet",
+        "node",
+        "java",
+        "powershell",
+        "python"
+      ],
+      "defaultValue": "dotnet"
+    },
+    "functionsRuntimeVersion": {
+      "type": "string",
+      "allowedValues": [
+        "~3",
+        "~2",
+        "~1"
+      ],
+      "defaultValue": "~3"
+    }
+  },
+  "variables": {
+    "location": "[resourceGroup().location]",
+    "resourceName": "[take(toLower(parameters('resourceName')), 16)]",
+    "safeResourceName": "[replace(variables('resourceName'), '-', '')]",
+    "suffix": "[take(uniqueString(resourceGroup().id), 4)]",
+
+    "keyVaultName": "[concat(variables('resourceName'), '-kv-', variables('suffix'))]",
+    "storageAccountName": "[concat(variables('safeResourceName'), 'sto', variables('suffix'))]",
+    "appInsightsName": "[concat(variables('resourceName'), '-ai-', variables('suffix'))]",
+    "hostingPlanName": "[concat(variables('resourceName'), '-plan-', variables('suffix'))]",
+    "functionAppName": "[concat(variables('resourceName'), '-app-', variables('suffix'))]",
+    "signalrName": "[concat(variables('resourceName'), '-sr-', variables('suffix'))]",
+
+    "storageConnectionStringName": "[concat(variables('storageAccountName'), '-ConnectionString')]",
+    "appInsightsKeyName": "[concat(variables('appInsightsName'), '-InstrumentationKey')]",
+    "signalrConnectionStringName": "[concat(variables('signalrName'), '-ConnectionString')]",
+
+    "functionsLanguage": "[parameters('functionsLanguage')]",
+    "functionsRuntimeVersion": "[parameters('functionsRuntimeVersion')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.KeyVault/vaults",
+      "apiVersion": "2016-10-01",
+      "name": "[variables('keyVaultName')]",
+      "location": "[variables('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]"
+      ],
+      "properties": {
+        "sku": {
+          "family": "A",
+          "name": "standard"
+        },
+        "tenantId": "[subscription().tenantId]",
+        "accessPolicies": [
+          {
+            "tenantId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2016-08-01', 'Full').identity.tenantId]",
+            "objectId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2016-08-01', 'Full').identity.principalId]",
+            "permissions": {
+              "secrets": [
+                "get"
+              ]
+            }
+          }
+        ],
+        "enabledForDeployment": false,
+        "enabledForDiskEncryption": false,
+        "enabledForTemplateDeployment": false
+      },
+      "resources": [
+        {
+          "type": "secrets",
+          "name": "[variables('storageConnectionStringName')]",
+          "apiVersion": "2016-10-01",
+          "dependsOn": [
+            "[resourceId('Microsoft.KeyVault/vaults/', variables('keyVaultName'))]",
+            "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+          ],
+          "properties": {
+            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';AccountKey=', listkeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2015-05-01-preview').key1,';')]"
+          }
+        },
+        {
+          "type": "secrets",
+          "name": "[variables('appInsightsKeyName')]",
+          "apiVersion": "2016-10-01",
+          "dependsOn": [
+            "[resourceId('Microsoft.KeyVault/vaults/', variables('keyVaultName'))]",
+            "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]"
+          ],
+          "properties": {
+            "value": "[reference(resourceId('microsoft.insights/components/', variables('appInsightsName')), '2015-05-01').InstrumentationKey]"
+          }
+        },
+        {
+          "type": "secrets",
+          "name": "[variables('signalrConnectionStringName')]",
+          "apiVersion": "2016-10-01",
+          "dependsOn": [
+            "[resourceId('Microsoft.KeyVault/vaults/', variables('keyVaultName'))]",
+            "[resourceId('Microsoft.SignalRService/SignalR', variables('signalrName'))]"
+          ],
+          "properties": {
+            "value": "[listKeys(resourceId('Microsoft.SignalRService/SignalR', variables('signalrName')), providers('Microsoft.SignalRService','SignalR').apiVersions[0]).primaryConnectionString]"
+          }
+        }
+      ]
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2019-06-01",
+      "name": "[variables('storageAccountName')]",
+      "location": "[variables('location')]",
+      "sku": {
+        "name": "Standard_GRS",
+        "tier": "Standard"
+      },
+      "kind": "StorageV2",
+      "properties": {
+        "azureFilesIdentityBasedAuthentication": {
+          "directoryServiceOptions": "None"
+        },
+        "largeFileSharesState": "Disabled",
+        "networkAcls": {
+          "bypass": "AzureServices",
+          "virtualNetworkRules": [
+          ],
+          "ipRules": [
+          ],
+          "defaultAction": "Allow"
+        },
+        "supportsHttpsTrafficOnly": true,
+        "encryption": {
+          "services": {
+            "file": {
+              "keyType": "Account",
+              "enabled": true
+            },
+            "blob": {
+              "keyType": "Account",
+              "enabled": true
+            }
+          },
+          "keySource": "Microsoft.Storage"
+        },
+        "accessTier": "Hot"
+      }
+    },
+    {
+      "type": "Microsoft.Insights/components",
+      "apiVersion": "2015-05-01",
+      "name": "[variables('appInsightsName')]",
+      "location": "[variables('location')]",
+      "kind": "web",
+      "properties": {
+        "Application_Type": "web"
+      }
+    },
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2018-02-01",
+      "name": "[variables('hostingPlanName')]",
+      "location": "[variables('location')]",
+      "sku": {
+        "name": "Y1",
+        "tier": "Dynamic",
+        "size": "Y1",
+        "family": "Y",
+        "capacity": 0
+      },
+      "kind": "functionapp",
+      "properties": {
+        "perSiteScaling": false,
+        "maximumElasticWorkerCount": 1,
+        "isSpot": false,
+        "reserved": false,
+        "isXenon": false,
+        "hyperV": false,
+        "targetWorkerCount": 0,
+        "targetWorkerSizeId": 0
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2018-11-01",
+      "name": "[variables('functionAppName')]",
+      "location": "[variables('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/serverfarms', variables('hostingPlanName'))]"
+      ],
+      "kind": "functionapp",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('hostingPlanName'))]",
+        "httpsOnly": true,
+        "siteConfig": {
+          "minTlsVersion": "1.2",
+          "ftpsState": "Disabled",
+          "http20Enabled": true,
+          "cors": {
+            "allowedOrigins": [
+              "https://functions.azure.com",
+              "https://functions-staging.azure.com",
+              "https://functions-next.azure.com"
+            ],
+            "supportCredentials": true
+          }
+        }
+      },
+      "resources": [
+        {
+          "apiVersion": "2018-11-01",
+          "name": "appsettings",
+          "type": "config",
+          "dependsOn": [
+            "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
+            "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+            "[resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), variables('storageConnectionStringName'))]",
+            "[resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), variables('appInsightsKeyName'))]",
+            "[resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), variables('signalrConnectionStringName'))]"
+          ],
+          "properties": {
+            "FUNCTIONS_WORKER_RUNTIME": "[variables('functionsLanguage')]",
+            "FUNCTIONS_EXTENSION_VERSION": "[variables('functionsRuntimeVersion')]",
+            "AzureWebJobsStorage": "[concat('@Microsoft.KeyVault(SecretUri=', reference(resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), variables('storageConnectionStringName'))).secretUriWithVersion, ')')]",
+            "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING": "[concat('@Microsoft.KeyVault(SecretUri=', reference(resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), variables('storageConnectionStringName'))).secretUriWithVersion, ')')]",
+            "WEBSITE_CONTENTSHARE": "[concat(variables('functionAppName'), '-', variables('suffix'))]",
+            "WEBSITE_ENABLE_SYNC_UPDATE_SITE": "true",
+            "APPINSIGHTS_INSTUMENTATIONKEY": "[concat('@Microsoft.KeyVault(SecretUri=', reference(resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), variables('appInsightsKeyName'))).secretUriWithVersion, ')')]",
+            "AzureSignalRConnectionString": "[concat('@Microsoft.KeyVault(SecretUri=', reference(resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), variables('signalrConnectionStringName'))).secretUriWithVersion, ')')]"
+          }
+        }
+      ]
+    },
+    {
+      "type": "Microsoft.SignalRService/SignalR",
+      "apiVersion": "2018-10-01",
+      "name": "[variables('signalrName')]",
+      "location": "[variables('location')]",
+      "sku": {
+        "name": "Free_F1",
+        "tier": "Free",
+        "size": "F1",
+        "capacity": 1
+      },
+      "properties": {
+        "features": [
+          {
+            "flag": "ServiceMode",
+            "value": "Serverless",
+            "properties": {
+            }
+          },
+          {
+            "flag": "EnableConnectivityLogs",
+            "value": "True",
+            "properties": {
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "outputs": {
+  },
+  "functions": [
+  ]
+}
