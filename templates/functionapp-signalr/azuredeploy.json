@@ -25,6 +25,30 @@
         "~1"
       ],
       "defaultValue": "~3"
+    },
+    "appServicePlanSku": {
+      "type": "string",
+      "allowedValues": [
+        "D1",
+        "F1",
+        "B1",
+        "B2",
+        "B3",
+        "S1",
+        "S2",
+        "S3",
+        "P1",
+        "P2",
+        "P3",
+        "P1V2",
+        "P2V2",
+        "P3V2",
+        "I1",
+        "I2",
+        "I3",
+        "Y1"
+      ],
+      "defaultValue": "Y1"
     }
   },
   "variables": {
@@ -45,7 +69,8 @@
     "signalrConnectionStringName": "[concat(variables('signalrName'), '-ConnectionString')]",
 
     "functionsLanguage": "[parameters('functionsLanguage')]",
-    "functionsRuntimeVersion": "[parameters('functionsRuntimeVersion')]"
+    "functionsRuntimeVersion": "[parameters('functionsRuntimeVersion')]",
+    "appServicePlanSku": "[parameters('appServicePlanSku')]"
   },
   "resources": [
     {
@@ -172,11 +197,7 @@
       "name": "[variables('hostingPlanName')]",
       "location": "[variables('location')]",
       "sku": {
-        "name": "Y1",
-        "tier": "Dynamic",
-        "size": "Y1",
-        "family": "Y",
-        "capacity": 0
+        "name": "[variables('appServicePlanSku')]"
       },
       "kind": "functionapp",
       "properties": {
@@ -184,7 +205,6 @@
         "maximumElasticWorkerCount": 1,
         "isSpot": false,
         "reserved": false,
-        "isXenon": false,
         "hyperV": false,
         "targetWorkerCount": 0,
         "targetWorkerSizeId": 0
@@ -205,7 +225,9 @@
       "properties": {
         "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('hostingPlanName'))]",
         "httpsOnly": true,
+        "clientAffinityEnabled": false,
         "siteConfig": {
+          "alwaysOn": "[not(equals(variables('appServicePlanSku'),'Y1'))]",
           "minTlsVersion": "1.2",
           "ftpsState": "Disabled",
           "http20Enabled": true,
@@ -236,9 +258,9 @@
             "FUNCTIONS_EXTENSION_VERSION": "[variables('functionsRuntimeVersion')]",
             "AzureWebJobsStorage": "[concat('@Microsoft.KeyVault(SecretUri=', reference(resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), variables('storageConnectionStringName'))).secretUriWithVersion, ')')]",
             "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING": "[concat('@Microsoft.KeyVault(SecretUri=', reference(resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), variables('storageConnectionStringName'))).secretUriWithVersion, ')')]",
-            "WEBSITE_CONTENTSHARE": "[concat(variables('functionAppName'), '-', variables('suffix'))]",
+            "WEBSITE_CONTENTSHARE": "[variables('functionAppName')]",
             "WEBSITE_ENABLE_SYNC_UPDATE_SITE": "true",
-            "APPINSIGHTS_INSTUMENTATIONKEY": "[concat('@Microsoft.KeyVault(SecretUri=', reference(resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), variables('appInsightsKeyName'))).secretUriWithVersion, ')')]",
+            "APPINSIGHTS_INSTRUMENTATIONKEY": "[concat('@Microsoft.KeyVault(SecretUri=', reference(resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), variables('appInsightsKeyName'))).secretUriWithVersion, ')')]",
             "AzureSignalRConnectionString": "[concat('@Microsoft.KeyVault(SecretUri=', reference(resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), variables('signalrConnectionStringName'))).secretUriWithVersion, ')')]"
           }
         }
