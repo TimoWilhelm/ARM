@@ -55,14 +55,14 @@
     "location": "[resourceGroup().location]",
     "resourceName": "[take(toLower(parameters('resourceName')), 16)]",
     "safeResourceName": "[replace(variables('resourceName'), '-', '')]",
-    "suffix": "[take(uniqueString(resourceGroup().id), 4)]",
+    "suffix": "[take(uniqueString(resourceGroup().id), 3)]",
 
-    "keyVaultName": "[concat(variables('resourceName'), '-kv-', variables('suffix'))]",
-    "storageAccountName": "[concat(variables('safeResourceName'), 'sto', variables('suffix'))]",
-    "appInsightsName": "[concat(variables('resourceName'), '-ai-', variables('suffix'))]",
-    "hostingPlanName": "[concat(variables('resourceName'), '-plan-', variables('suffix'))]",
-    "functionAppName": "[concat(variables('resourceName'), '-app-', variables('suffix'))]",
-    "signalrName": "[concat(variables('resourceName'), '-sr-', variables('suffix'))]",
+    "keyVaultName": "[concat('kv-', variables('resourceName'), '-', variables('suffix'))]",
+    "storageAccountName": "[concat('st', variables('safeResourceName'), variables('suffix'))]",
+    "appInsightsName": "[concat('ai-', variables('resourceName'), '-', variables('suffix'))]",
+    "hostingPlanName": "[concat('plan-', variables('resourceName'), '-', variables('suffix'))]",
+    "functionAppName": "[concat('func-', variables('resourceName'), '-', variables('suffix'))]",
+    "signalrName": "[concat('sr-', variables('resourceName'), '-', variables('suffix'))]",
 
     "storageConnectionStringName": "[concat(variables('storageAccountName'), '-ConnectionString')]",
     "appInsightsKeyName": "[concat(variables('appInsightsName'), '-InstrumentationKey')]",
@@ -258,7 +258,7 @@
             "FUNCTIONS_EXTENSION_VERSION": "[variables('functionsRuntimeVersion')]",
             "AzureWebJobsStorage": "[concat('@Microsoft.KeyVault(SecretUri=', reference(resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), variables('storageConnectionStringName'))).secretUriWithVersion, ')')]",
             "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING": "[concat('@Microsoft.KeyVault(SecretUri=', reference(resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), variables('storageConnectionStringName'))).secretUriWithVersion, ')')]",
-            "WEBSITE_CONTENTSHARE": "[variables('functionAppName')]",
+            "WEBSITE_CONTENTSHARE": "[concat(variables('functionAppName'), '-contentshare')]",
             "WEBSITE_ENABLE_SYNC_UPDATE_SITE": "true",
             "APPINSIGHTS_INSTRUMENTATIONKEY": "[concat('@Microsoft.KeyVault(SecretUri=', reference(resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), variables('appInsightsKeyName'))).secretUriWithVersion, ')')]",
             "AzureSignalRConnectionString": "[concat('@Microsoft.KeyVault(SecretUri=', reference(resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), variables('signalrConnectionStringName'))).secretUriWithVersion, ')')]"
@@ -287,7 +287,7 @@
           },
           {
             "flag": "EnableConnectivityLogs",
-            "value": "True",
+            "value": "true",
             "properties": {
             }
           }
