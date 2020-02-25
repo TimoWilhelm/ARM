@@ -1,0 +1,1 @@
+# Storage account with CDN
