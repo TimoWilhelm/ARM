@@ -1,0 +1,228 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "resourceName": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().name]"
+    },
+    "appServicePlanSku": {
+      "type": "string",
+      "allowedValues": [
+        "D1",
+        "F1",
+        "B1",
+        "B2",
+        "B3",
+        "S1",
+        "S2",
+        "S3",
+        "P1",
+        "P2",
+        "P3",
+        "P1V2",
+        "P2V2",
+        "P3V2",
+        "I1",
+        "I2",
+        "I3",
+        "Y1"
+      ],
+      "defaultValue": "B1"
+    },
+    "pingTestPath": {
+      "type": "string",
+      "defaultValue": "/hc"
+    },
+    "alertEmailReceivers": {
+      "type": "array",
+      "defaultValue": [
+        {
+          "name": "Example_-EmailAction-",
+          "emailAddress": "example@example.com",
+          "useCommonAlertSchema": true
+        }
+      ]
+    }
+  },
+  "variables": {
+    "location": "[resourceGroup().location]",
+    "resourceName": "[take(toLower(parameters('resourceName')), 16)]",
+    "suffix": "[take(uniqueString(resourceGroup().id), 3)]",
+
+    "appInsightsName": "[concat('ai-', variables('resourceName'), '-', variables('suffix'))]",
+    "hostingPlanName": "[concat('plan-', variables('resourceName'), '-', variables('suffix'))]",
+    "appServiceName": "[concat('app-', variables('resourceName'), '-', variables('suffix'))]",
+
+    "appServicePlanSku": "[parameters('appServicePlanSku')]",
+
+    "pingTestName": "[concat('pingTest-', variables('appServiceName'))]",
+    "pingTestPath": "[parameters('pingTestPath')]",
+    "pingTestAlertRuleName": "[concat('pingTestAlert-', variables('appServiceName'))]",
+    "alertActionGroupName": "[concat('actionGroup-', variables('resourceName'), '-alerts-', variables('suffix'))]",
+    "alertEmailReceivers": "[parameters('alertEmailReceivers')]"
+
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Insights/components",
+      "apiVersion": "2015-05-01",
+      "name": "[variables('appInsightsName')]",
+      "location": "[variables('location')]",
+      "kind": "web",
+      "properties": {
+        "Application_Type": "web"
+      }
+    },
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2018-02-01",
+      "name": "[variables('hostingPlanName')]",
+      "location": "[variables('location')]",
+      "sku": {
+        "name": "[variables('appServicePlanSku')]"
+      },
+      "kind": "app",
+      "properties": {
+        "perSiteScaling": false,
+        "maximumElasticWorkerCount": 1,
+        "isSpot": false,
+        "reserved": false,
+        "hyperV": false,
+        "targetWorkerCount": 0,
+        "targetWorkerSizeId": 0
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2018-11-01",
+      "name": "[variables('appServiceName')]",
+      "location": "[variables('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/serverfarms', variables('hostingPlanName'))]"
+      ],
+      "kind": "app",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('hostingPlanName'))]",
+        "httpsOnly": true,
+        "clientAffinityEnabled": false,
+        "siteConfig": {
+          "alwaysOn": "[not(equals(variables('appServicePlanSku'),'Y1'))]",
+          "minTlsVersion": "1.2",
+          "ftpsState": "Disabled",
+          "http20Enabled": true,
+          "cors": {
+            "allowedOrigins": [
+            ],
+            "supportCredentials": true
+          }
+        }
+      }
+    },
+    {
+      "type": "microsoft.insights/actionGroups",
+      "apiVersion": "2019-03-01",
+      "name": "[variables('alertActionGroupName')]",
+      "location": "Global",
+      "properties": {
+        "groupShortName": "AlertGroup",
+        "enabled": true,
+        "emailReceivers": "[variables('alertEmailReceivers')]",
+        "smsReceivers": [
+        ],
+        "webhookReceivers": [
+        ],
+        "itsmReceivers": [
+        ],
+        "azureAppPushReceivers": [
+        ],
+        "automationRunbookReceivers": [
+        ],
+        "voiceReceivers": [
+        ],
+        "logicAppReceivers": [
+        ],
+        "azureFunctionReceivers": [
+        ]
+      }
+    },
+    {
+      "name": "[variables('pingTestName')]",
+      "type": "Microsoft.Insights/webtests",
+      "apiVersion": "2014-04-01",
+      "location": "[variables('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]",
+        "[resourceId('Microsoft.Web/sites', variables('appServiceName'))]"
+      ],
+      "tags": {
+        "[concat('hidden-link:', resourceId('Microsoft.Insights/components', variables('appInsightsName')))]": "Resource"
+      },
+      "properties": {
+        "Name": "[variables('pingTestName')]",
+        "Description": "Basic ping test",
+        "Enabled": true,
+        "Frequency": 300,
+        "Timeout": 120,
+        "Kind": "ping",
+        "RetryEnabled": true,
+        "Locations": [
+          {
+            "Id": "emea-nl-ams-azr"
+          },
+          {
+            "Id": "emea-gb-db3-azr"
+          },
+          {
+            "Id": "us-va-ash-azr"
+          },
+          {
+            "Id": "emea-au-syd-edge"
+          }
+        ],
+        "Configuration": {
+          "WebTest": "[concat('<WebTest   Name=\"', variables('pingTestName'), '\"   Enabled=\"True\"         CssProjectStructure=\"\"    CssIteration=\"\"  Timeout=\"120\"  WorkItemIds=\"\"         xmlns=\"http://microsoft.com/schemas/VisualStudio/TeamTest/2010\"         Description=\"\"  CredentialUserName=\"\"  CredentialPassword=\"\"         PreAuthenticate=\"True\"  Proxy=\"default\"  StopOnError=\"False\"         RecordedResultFile=\"\"  ResultsLocale=\"\">  <Items>  <Request Method=\"GET\"    Version=\"1.1\"  Url=\"', reference(resourceId('Microsoft.Web/sites', variables('appServiceName')), '2018-02-01').defaultHostName,  variables('pingTestPath'),   '\" ThinkTime=\"0\"  Timeout=\"300\" ParseDependentRequests=\"True\"         FollowRedirects=\"True\" RecordResult=\"True\" Cache=\"False\"         ResponseTimeGoal=\"0\"  Encoding=\"utf-8\"  ExpectedHttpStatusCode=\"200\"         ExpectedResponseUrl=\"\" ReportingName=\"\" IgnoreHttpStatusCode=\"False\" />        </Items>        </WebTest>')]"
+        },
+        "SyntheticMonitorId": "[variables('pingTestName')]"
+      }
+    },
+    {
+      "name": "[variables('pingTestAlertRuleName')]",
+      "type": "Microsoft.Insights/metricAlerts",
+      "apiVersion": "2018-03-01",
+      "location": "global",
+      "dependsOn": [
+        "[resourceId('Microsoft.Insights/webtests', variables('pingTestName'))]"
+      ],
+      "tags": {
+        "[concat('hidden-link:', resourceId('Microsoft.Insights/components', variables('appInsightsName')))]": "Resource",
+        "[concat('hidden-link:', resourceId('Microsoft.Insights/webtests', variables('pingTestName')))]": "Resource"
+      },
+      "properties": {
+        "description": "Alert for web test",
+        "severity": 1,
+        "enabled": true,
+        "scopes": [
+          "[resourceId('Microsoft.Insights/webtests', variables('pingTestName'))]",
+          "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]"
+        ],
+        "evaluationFrequency": "PT1M",
+        "windowSize": "PT5M",
+        "criteria": {
+          "odata.type": "Microsoft.Azure.Monitor.WebtestLocationAvailabilityCriteria",
+          "webTestId": "[resourceId('Microsoft.Insights/webtests', variables('pingTestName'))]",
+          "componentId": "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]",
+          "failedLocationCount": 2
+        },
+        "actions": [
+          {
+            "actionGroupId": "[resourceId('microsoft.insights/actionGroups', variables('alertActionGroupName'))]"
+          }
+        ]
+      }
+    }
+  ]
+}
