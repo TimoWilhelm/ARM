@@ -1,0 +1,237 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "resourceName": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().name]"
+    },
+    "appServicePlanSku": {
+      "type": "string",
+      "allowedValues": [
+        "S1",
+        "S2",
+        "S3",
+        "P1",
+        "P2",
+        "P3",
+        "P1V2",
+        "P2V2",
+        "P3V2",
+        "I1",
+        "I2",
+        "I3",
+        "Y1"
+      ],
+      "defaultValue": "S1"
+    },
+    "mysqlVersion": {
+      "type": "string",
+      "defaultValue": "8.0"
+    },
+    "mysqlAdministratorLogin": {
+      "type": "string"
+    },
+    "mysqlAdministratorLoginPassword": {
+      "type": "securestring"
+    }
+  },
+  "variables": {
+    "location": "[resourceGroup().location]",
+    "resourceName": "[take(toLower(parameters('resourceName')), 16)]",
+    "suffix": "[take(uniqueString(resourceGroup().id), 3)]",
+
+    "hostingPlanName": "[concat('plan-', variables('resourceName'), '-', variables('suffix'))]",
+    "appServiceName": "[concat('app-', variables('resourceName'), '-', variables('suffix'))]",
+    "vnetName": "[concat('vnet-', variables('resourceName'), '-', variables('suffix'))]",
+    "mysqlName": "[concat('mysql-', variables('resourceName'), '-', variables('suffix'))]",
+
+    "subnetName": "webapp-subnet",
+
+    "appServicePlanSku": "[parameters('appServicePlanSku')]",
+
+    "mysqlVersion": "[parameters('mysqlVersion')]",
+    "mysqlAdministratorLogin": "[parameters('mysqlAdministratorLogin')]",
+    "mysqlAdministratorLoginPassword": "[parameters('mysqlAdministratorLoginPassword')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2020-05-01",
+      "name": "[variables('vnetName')]",
+      "location": "[variables('location')]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "10.1.0.0/16"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "[variables('subnetName')]",
+            "properties": {
+              "addressPrefix": "10.1.0.0/24",
+              "serviceEndpoints": [
+                {
+                  "service": "Microsoft.Sql",
+                  "locations": [
+                    "[variables('location')]"
+                  ]
+                }
+              ],
+              "delegations": [
+                {
+                  "name": "delegation",
+                  "properties": {
+                    "serviceName": "Microsoft.Web/serverfarms"
+                  }
+                }
+              ],
+              "privateEndpointNetworkPolicies": "Enabled",
+              "privateLinkServiceNetworkPolicies": "Enabled"
+            }
+          }
+        ],
+        "virtualNetworkPeerings": [],
+        "enableDdosProtection": false,
+        "enableVmProtection": false
+      },
+      "resources": [
+        {
+          "type": "subnets",
+          "apiVersion": "2020-05-01",
+          "name": "[variables('subnetName')]",
+          "dependsOn": [
+            "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+          ],
+          "properties": {
+            "addressPrefix": "10.1.0.0/24",
+            "serviceEndpoints": [
+              {
+                "service": "Microsoft.Sql",
+                "locations": [
+                  "[variables('location')]"
+                ]
+              }
+            ],
+            "delegations": [
+              {
+                "name": "delegation",
+                "properties": {
+                  "serviceName": "Microsoft.Web/serverfarms"
+                }
+              }
+            ],
+            "privateEndpointNetworkPolicies": "Enabled",
+            "privateLinkServiceNetworkPolicies": "Enabled"
+          }
+        }
+      ]
+    },
+    {
+      "type": "Microsoft.DBforMySQL/servers",
+      "apiVersion": "2017-12-01",
+      "name": "[variables('mysqlName')]",
+      "location": "[variables('location')]",
+      "sku": {
+        "name": "GP_Gen5_4",
+        "tier": "GeneralPurpose",
+        "family": "Gen5",
+        "capacity": 4
+      },
+      "properties": {
+        "createMode": "Default",
+        "storageProfile": {
+          "storageMB": 102400,
+          "backupRetentionDays": 7,
+          "geoRedundantBackup": "Disabled",
+          "storageAutogrow": "Enabled"
+        },
+        "administratorLogin": "[variables('mysqlAdministratorLogin')]",
+        "administratorLoginPassword": "[variables('mysqlAdministratorLoginPassword')]",
+        "version": "[variables('mysqlVersion')]",
+        "sslEnforcement": "Enabled",
+        "minimalTlsVersion": "TLSEnforcementDisabled",
+        "infrastructureEncryption": "Disabled",
+        "publicNetworkAccess": "Enabled"
+      },
+      "resources": [
+        {
+          "type": "virtualNetworkRules",
+          "apiVersion": "2017-12-01",
+          "name": "[variables('subnetName')]",
+          "dependsOn": [
+            "[resourceId('Microsoft.DBforMySQL/servers', variables('mysqlName'))]",
+            "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName'))]"
+          ],
+          "properties": {
+            "virtualNetworkSubnetId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName'))]",
+            "ignoreMissingVnetServiceEndpoint": false
+          }
+        }
+      ]
+    },
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2018-02-01",
+      "name": "[variables('hostingPlanName')]",
+      "location": "[variables('location')]",
+      "sku": {
+        "name": "[variables('appServicePlanSku')]"
+      },
+      "kind": "app",
+      "properties": {
+        "perSiteScaling": false,
+        "maximumElasticWorkerCount": 1,
+        "isSpot": false,
+        "reserved": false,
+        "hyperV": false,
+        "targetWorkerCount": 0,
+        "targetWorkerSizeId": 0
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2018-11-01",
+      "name": "[variables('appServiceName')]",
+      "location": "[variables('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/serverfarms', variables('hostingPlanName'))]"
+      ],
+      "kind": "app",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('hostingPlanName'))]",
+        "httpsOnly": true,
+        "clientAffinityEnabled": false,
+        "siteConfig": {
+          "minTlsVersion": "1.2",
+          "ftpsState": "Disabled",
+          "http20Enabled": true,
+          "cors": {
+            "allowedOrigins": [
+            ],
+            "supportCredentials": true
+          }
+        }
+      },
+      "resources": [
+        {
+          "name": "virtualNetwork",
+          "type": "networkConfig",
+          "apiVersion": "2018-02-01",
+          "location": "[variables('location')]",
+          "dependsOn": [
+            "[resourceId('Microsoft.Web/sites', variables('appServiceName'))]"
+          ],
+          "properties": {
+            "subnetResourceid": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName'))]",
+            "swiftSupported": true
+          }
+        }
+      ]
+    }
+  ]
+}
