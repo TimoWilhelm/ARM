@@ -96,37 +96,6 @@
         "enableDdosProtection": false,
         "enableVmProtection": false
       },
-      "resources": [
-        {
-          "type": "subnets",
-          "apiVersion": "2020-05-01",
-          "name": "[variables('subnetName')]",
-          "dependsOn": [
-            "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
-          ],
-          "properties": {
-            "addressPrefix": "10.1.0.0/24",
-            "serviceEndpoints": [
-              {
-                "service": "Microsoft.Sql",
-                "locations": [
-                  "[variables('location')]"
-                ]
-              }
-            ],
-            "delegations": [
-              {
-                "name": "delegation",
-                "properties": {
-                  "serviceName": "Microsoft.Web/serverfarms"
-                }
-              }
-            ],
-            "privateEndpointNetworkPolicies": "Enabled",
-            "privateLinkServiceNetworkPolicies": "Enabled"
-          }
-        }
-      ]
     },
     {
       "type": "Microsoft.DBforMySQL/servers",
@@ -162,7 +131,7 @@
           "name": "[variables('subnetName')]",
           "dependsOn": [
             "[resourceId('Microsoft.DBforMySQL/servers', variables('mysqlName'))]",
-            "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName'))]"
+            "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
           ],
           "properties": {
             "virtualNetworkSubnetId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName'))]",
