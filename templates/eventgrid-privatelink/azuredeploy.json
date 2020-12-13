@@ -1,0 +1,203 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "resourceName": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().name]"
+    }
+  },
+  "variables": {
+    "location": "[resourceGroup().location]",
+    "resourceName": "[take(toLower(parameters('resourceName')), 16)]",
+    "suffix": "[take(uniqueString(resourceGroup().id), 3)]",
+
+    "eventGridTopic1Name": "[concat('evg-topic1-', variables('resourceName'), '-', variables('suffix'))]",
+    "eventGridTopic1PrivateEndpointName": "[concat('pe-', variables('eventGridTopic1Name'))]",
+
+    "vnetName": "[concat('vnet-', variables('resourceName'), '-', variables('suffix'))]",
+    "vnetAddressPrefix": "10.0.0.0/16",
+    "eventGridSubnetName": "eventGrid",
+    "eventGridAddressPrefix": "10.0.1.0/24"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2020-05-01",
+      "name": "[variables('vnetName')]",
+      "location": "[variables('location')]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[variables('vnetAddressPrefix')]"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "[variables('eventGridSubnetName')]",
+            "properties": {
+              "addressPrefix": "[variables('eventGridAddressPrefix')]",
+              "serviceEndpoints": [],
+              "delegations": [],
+              "privateEndpointNetworkPolicies": "Disabled",
+              "privateLinkServiceNetworkPolicies": "Enabled"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.EventGrid/topics",
+      "apiVersion": "2020-04-01-preview",
+      "name": "[variables('eventGridTopic1Name')]",
+      "location": "[variables('location')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "inputSchema": "EventGridSchema",
+        "publicNetworkAccess": "Disabled"
+      }
+    },
+    {
+      "apiVersion": "2019-10-01",
+      "name": "[concat(deployment().name, '__deployEventGridPE')]",
+      "type": "Microsoft.Resources/deployments",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",
+        "[resourceId('Microsoft.EventGrid/topics', variables('eventGridTopic1Name'))]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "parameters": {
+          "privateEndpointName": {
+            "value": "[variables('eventGridTopic1PrivateEndpointName')]"
+          },
+          "location": {
+            "value": "[variables('location')]"
+          },
+          "virtualNetworkResourceId": {
+            "value": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+          },
+          "subnetResourceId": {
+            "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('eventGridSubnetName'))]"
+          },
+          "privateDnsZoneName": {
+            "value": "privatelink.eventgrid.azure.net"
+          },
+          "privateLinkServiceResourceId": {
+            "value": "[resourceId('Microsoft.EventGrid/topics', variables('eventGridTopic1Name'))]"
+          },
+          "groupIds": {
+            "value": [ "topic" ]
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "privateEndpointName": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            },
+            "virtualNetworkResourceId": {
+              "type": "string"
+            },
+            "subnetResourceId": {
+              "type": "string"
+            },
+            "privateDnsZoneName": {
+              "type": "string"
+            },
+            "privateLinkServiceResourceId": {
+              "type": "string"
+            },
+            "groupIds": {
+              "type": "array"
+            },
+            "registrationEnabled": {
+              "type": "bool",
+              "defaultValue": false
+            }
+          },
+          "variables": {},
+          "resources": [
+            {
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2020-05-01",
+              "name": "[parameters('privateEndpointName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "[parameters('privateEndpointName')]",
+                    "properties": {
+                      "privateLinkServiceId": "[parameters('privateLinkServiceResourceId')]",
+                      "groupIds": "[parameters('groupIds')]"
+                    }
+                  }
+                ],
+                "manualPrivateLinkServiceConnections": [],
+                "subnet": {
+                  "id": "[parameters('subnetResourceId')]"
+                },
+                "customDnsConfigs": []
+              },
+              "resources": [
+                {
+                  "type": "privateDnsZoneGroups",
+                  "apiVersion": "2020-06-01",
+                  "name": "privateDnsGroup",
+                  "location": "[parameters('location')]",
+                  "dependsOn": [
+                    "[resourceId('Microsoft.Network/privateEndpoints', parameters('privateEndpointName'))]",
+                    "[resourceId('Microsoft.Network/privateDnsZones', parameters('privateDnsZoneName'))]"
+                  ],
+                  "properties": {
+                    "privateDnsZoneConfigs": [
+                      {
+                        "name": "config1",
+                        "properties": {
+                          "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', parameters('privateDnsZoneName'))]"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2018-09-01",
+              "name": "[parameters('privateDnsZoneName')]",
+              "location": "global",
+              "properties": {},
+              "resources": [
+                {
+                  "type": "virtualNetworkLinks",
+                  "apiVersion": "2018-09-01",
+                  "name": "[concat(parameters('privateDnsZoneName'), '-link')]",
+                  "location": "global",
+                  "dependsOn": [
+                    "[resourceId('Microsoft.Network/privateDnsZones', parameters('privateDnsZoneName'))]"
+                  ],
+                  "properties": {
+                    "registrationEnabled": "[parameters('registrationEnabled')]",
+                    "virtualNetwork": {
+                      "id": "[parameters('virtualNetworkResourceId')]"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
