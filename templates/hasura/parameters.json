@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "postgresAdminPassword": {
+      "value": <REPLACE_ME>
+    },
+    "environmentVariables": {
+      "value": {
+        "HASURA_GRAPHQL_ADMIN_SECRET": <REPLACE_ME>,
+        "HASURA_GRAPHQL_CORS_DOMAIN": "*",
+        "HASURA_GRAPHQL_DEV_MODE": "true",
+        "HASURA_GRAPHQL_ENABLE_CONSOLE": "true"
+      }
+    }
+  }
+}
