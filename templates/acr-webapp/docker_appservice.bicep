@@ -1,14 +1,30 @@
+param location string
 param webAppName string
 param hostingPlanId string
 param registry string
 param image string
 
-module webapp './appservice.bicep' = {
+resource webapp 'Microsoft.Web/sites@2020-12-01' = {
   name: webAppName
-  params: {
-    appServiceName: webAppName
-    hostingPlanId: hostingPlanId
-    kind: 'app,linux,container'
+  location: location
+  kind: 'app,linux,container'
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: {
+    enabled: true
+    serverFarmId: hostingPlanId
+    httpsOnly: true
+    clientAffinityEnabled: false
+    siteConfig: {
+      alwaysOn: true
+      minTlsVersion: '1.2'
+      ftpsState: 'Disabled'
+      http20Enabled: true
+      use32BitWorkerProcess: false
+      httpLoggingEnabled: true
+      logsDirectorySizeLimit: 35
+    }
   }
 }
 
@@ -16,7 +32,7 @@ resource acrPullRoleAssignment 'Microsoft.ContainerRegistry/registries/providers
   name: '${registry}/Microsoft.Authorization/${guid(registry, webAppName, 'AcrPull')}'
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
-    principalId: webapp.outputs.identity.principalId
+    principalId: webapp.identity.principalId
     principalType: 'MSI'
   }
 }
