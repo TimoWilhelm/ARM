@@ -11,7 +11,7 @@ param hostingPlanInstanceCount int = 1
 
 @description('The name of the images')
 param images array = [
-  'hello-world:latest'
+  'tiwitest:latest'
 ]
 
 var suffix = take(uniqueString(resourceGroup().id), 3)
@@ -21,6 +21,8 @@ var resourceName_var = take(toLower(resourceName), 16)
 var noSpaceResourceName = replace(resourceName_var, '-', '')
 
 var hostingPlanName = 'plan-${resourceName_var}-${suffix}'
+
+var deploymentId = take(uniqueString(deployment().name), 3)
 
 resource registry 'Microsoft.ContainerRegistry/registries@2020-11-01-preview' = {
   name: 'acr${noSpaceResourceName}'
@@ -48,12 +50,12 @@ resource hostingPlan 'Microsoft.Web/serverfarms@2018-02-01' = {
 }
 
 module app './docker_appservice.bicep' = [for image in images: {
-  name: substring(image, 0, indexOf(image, ':'))
+  name: '${deploymentId}_${substring(image, 0, indexOf(image, ':'))}'
   params: {
     location: location
     hostingPlanId: hostingPlan.id
-    registry: registry.id
-    image: '${registry.name}.azurecr.io/${image}'
+    registry: registry.name
+    image: image
     webAppName: 'app-${resourceName_var}-${substring(image, 0, indexOf(image, ':'))}-${suffix}'
   }
 }]
